@@ -319,7 +319,7 @@
   }
   .hero-ink-stage .hero-title { margin: 0; color: var(--ink); }
   .ink-canvas {
-    position: absolute; inset: 0; width: 100%; height: 100%;
+    position: absolute; inset: -16px 0;
     display: block; opacity: 1; pointer-events: none;
     transition: opacity 300ms ease;
   }
@@ -2134,14 +2134,12 @@ document.addEventListener('click',function(e){
   try { introSeen=sessionStorage.getItem("heroIntroSeen")==="1"; } catch(error) {}
 
   function resizeCanvas(){
-    var rect=stage.getBoundingClientRect();
-    stageWidth=Math.max(1,rect.width);
-    stageHeight=Math.max(1,rect.height);
+    var rect=canvas.getBoundingClientRect();
+    stageWidth=Math.max(1,Math.round(rect.width));
+    stageHeight=Math.max(1,Math.round(rect.height));
     dpr=Math.min(window.devicePixelRatio||1,2);
-    canvas.width=Math.max(1,Math.ceil(stageWidth*dpr));
-    canvas.height=Math.max(1,Math.ceil(stageHeight*dpr));
-    canvas.style.width=stageWidth+"px";
-    canvas.style.height=stageHeight+"px";
+    canvas.width=Math.round(stageWidth*dpr);
+    canvas.height=Math.round(stageHeight*dpr);
     context.setTransform(dpr,0,0,dpr,0,0);
     if(!started&&!finished) drawFrame(0,performance.now());
     if(finished) hideCanvas();
