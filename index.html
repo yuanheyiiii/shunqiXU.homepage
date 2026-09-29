@@ -109,7 +109,7 @@
   }
   .hero-title {
     margin: 0 0 clamp(24px, 5vh, 60px); font-weight: 800;
-    letter-spacing: -0.04em; line-height: 0.92; color: var(--ink);
+    letter-spacing: -0.04em; line-height: 1; color: var(--ink);
   }
   html.lang-en .hero-title { font-size: clamp(40px, min(9vw, 13vh), 140px); }
   html.lang-zh .hero-title,
@@ -2138,8 +2138,8 @@ document.addEventListener('click',function(e){
     stageWidth=Math.max(1,rect.width);
     stageHeight=Math.max(1,rect.height);
     dpr=Math.min(window.devicePixelRatio||1,2);
-    canvas.width=Math.max(1,Math.round(stageWidth*dpr));
-    canvas.height=Math.max(1,Math.round(stageHeight*dpr));
+    canvas.width=Math.max(1,Math.ceil(stageWidth*dpr));
+    canvas.height=Math.max(1,Math.ceil(stageHeight*dpr));
     canvas.style.width=stageWidth+"px";
     canvas.style.height=stageHeight+"px";
     context.setTransform(dpr,0,0,dpr,0,0);
