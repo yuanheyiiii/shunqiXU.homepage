@@ -679,11 +679,16 @@
       translate: 0 -50%;
     }
 
-    /* 手机端年份要沿弧线滑动，故补上 left/top 过渡；z-index 让当前年份压在固定指针之上 */
+    /* 手机端年份沿弧线「一档一档」滑动，故补 left/top 过渡（0.45s 平滑跳档）；
+       z-index 让当前年份压在固定指针之上 */
     .award-year {
       font-size: clamp(12px, 3.2vw, 16px);
       z-index: 2;
-      transition: left .35s cubic-bezier(.4,0,.2,1), top .35s cubic-bezier(.4,0,.2,1), color .4s ease, font-size .4s ease, text-shadow .4s ease;
+      transition:
+        left 0.45s cubic-bezier(.4, 0, .2, 1),
+        top  0.45s cubic-bezier(.4, 0, .2, 1),
+        color 0.3s,
+        font-size 0.3s;
     }
     .award-year.is-active { font-size: clamp(20px, 5.44vw, 27px); }
 
@@ -3008,7 +3013,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
       return;
     }
     var progress=clamp(-rect.top/scrollable,0,1);
-    var c=progress*(years.length-1);
+
+    /* 手机端：c 量化到 0/1/2 三档（一档一档跳，靠 CSS transition 平滑过渡）
+       电脑端：c 保持连续值（年份仍钉在弧线固定点，只让指针连续跟随） */
+    var c=isMobile()?Math.round(progress*(years.length-1)):progress*(years.length-1);
+
     currentC=c;
     if(isMobile()) layoutMobileYears(c);
     var index=Math.round(c);
