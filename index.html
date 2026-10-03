@@ -2002,6 +2002,35 @@ document.addEventListener('click',function(e){
       if(section.querySelector('.section-title')) observer.observe(section);
     });
 
+    /* 「获奖经历」整节高 320vh，可见比例最高只有约 31%，永远到不了 threshold 0.4，
+       所以上面的观察器对它永远不会回调 → 改成单独用「sticky 正好吸顶」这一刻触发，
+       与其它区块「滚到位才开始解码」的观感一致；滚回上一屏后再回来会重新解码一次 */
+    var awardsSection=document.getElementById('awards');
+    var awardsSticky=awardsSection?awardsSection.querySelector('.awards-sticky'):null;
+    if(awardsSticky){
+      var awardsArmed=true;
+      var awardsFrame=0;
+      var checkAwards=function(){
+        awardsFrame=0;
+        var rect=awardsSticky.getBoundingClientRect();
+        if(Math.abs(rect.top)<=2&&rect.bottom>0){
+          if(!awardsArmed) return;
+          awardsArmed=false;
+          var title=activeTitle(awardsSection);
+          if(title) decode(title);
+        }else if(Math.abs(rect.top)>8){   /* 离开吸顶位置足够远后重新武装：上下两个方向滚回来都会再解码一次 */
+          awardsArmed=true;
+        }
+      };
+      var onAwardsScroll=function(){
+        if(awardsFrame) return;
+        awardsFrame=requestAnimationFrame(checkAwards);
+      };
+      window.addEventListener('scroll',onAwardsScroll,{passive:true});
+      window.addEventListener('resize',onAwardsScroll);
+      checkAwards();
+    }
+
     new MutationObserver(function(mutations){
       if(mutations.some(function(mutation){
         return mutation.type==='attributes'&&mutation.attributeName==='class';
