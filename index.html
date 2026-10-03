@@ -595,6 +595,7 @@
   }
   .award-pointer {
     position: absolute;
+    display: block;
     width: 14px;
     height: 16px;
     background: var(--gold);
@@ -603,6 +604,7 @@
     transition: left 0.45s cubic-bezier(0.4, 0, 0.2, 1), top 0.45s cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: none;
   }
+  .awards-stepper { display: none; }
   .awards-detail-wrap {
     position: absolute;
     left: 48%;
@@ -659,11 +661,62 @@
   .award-detail ol { padding-left: 20px; }
   .award-detail li { margin-bottom: 6px; }
   @media (max-width: 820px) {
-    .awards-arc-wrap { width: 55%; }
-    .awards-detail-wrap { left: 46%; right: 4%; }
+    /* 弧线区收窄，让出中间空间 */
+    .awards-arc-wrap { width: 26%; }
+
+    /* 详情区拓宽 + 上移起点 + 上下留白（不再垂直居中） */
+    .awards-detail-wrap {
+      left: 30%;
+      right: 5%;
+      top: 10%;
+      bottom: 10%;
+      transform: none;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .award-year { font-size: clamp(12px, 3.2vw, 16px); }
     .award-year.is-active { font-size: clamp(20px, 5.44vw, 27px); }
     .award-detail-year { font-size: clamp(32px, 9vw, 44px); }
+
+    /* 字号适当缩小，避免断行太碎 */
+    .award-item-title { font-size: 15px; line-height: 1.55; margin-top: 12px; }
+    .award-detail p,
+    .award-detail ol,
+    .award-detail li { font-size: 14px; line-height: 1.75; }
+
+    /* 手机端隐藏三角指针，改用 ↕ 按钮组 */
+    .awards-pointer { display: none; }
+    .awards-stepper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 5;
+    }
+    .awards-step-btn {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.4);
+      background: rgba(255,255,255,0.08);
+      color: #FFFFFF;
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: border-color .25s, background .25s;
+    }
+    .awards-step-btn:active {
+      border-color: var(--gold);
+      background: rgba(198,138,31,0.2);
+    }
+    .awards-step-btn[disabled] {
+      opacity: 0.3;
+      pointer-events: none;
+    }
   }
 
 </style>
@@ -920,6 +973,10 @@
         <span class="award-year" data-index="1">2024</span>
         <span class="award-year" data-index="2">2025</span>
         <span class="award-pointer" aria-hidden="true"></span>
+        <div class="awards-stepper" aria-label="切换年份">
+          <button type="button" class="awards-step-btn" data-dir="-1" aria-label="上一年">▲</button>
+          <button type="button" class="awards-step-btn" data-dir="1"  aria-label="下一年">▼</button>
+        </div>
       </div>
       <div class="awards-detail-wrap">
         <div class="award-detail" data-index="0">
@@ -2934,9 +2991,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
     scrollScheduled=false;
     var rect=stage.getBoundingClientRect();
     var scrollable=stage.offsetHeight-window.innerHeight;
-    if(scrollable<=0){ applyActiveIndex(0); return; }
+    if(scrollable<=0){ window.__awardsCurrentC=0; applyActiveIndex(0); return; }
     var progress=clamp(-rect.top/scrollable,0,1);
-    var index=Math.round(progress*(years.length-1));
+    /* 连续年份进度：0=2023、1=2024、2=2025（供手机端 ↕ 按钮读取） */
+    var c=progress*(years.length-1);
+    window.__awardsCurrentC=c;
+    var index=Math.round(c);
     applyActiveIndex(clamp(index,0,years.length-1));
   }
 
@@ -2993,6 +3053,50 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
 
   measurePositions();
   updateFromScroll();
+})();
+
+/* 手机端 ↕ 按钮：手动跳年份 */
+(function(){
+  var stepper = document.querySelector('.awards-stepper');
+  if(!stepper) return;
+  var stage = document.querySelector('.awards-stage');
+  var scrollable = 0;
+
+  function updateScrollable(){
+    scrollable = stage.offsetHeight - window.innerHeight;
+  }
+  updateScrollable();
+  window.addEventListener('resize', updateScrollable);
+
+  stepper.addEventListener('click', function(e){
+    var btn = e.target.closest('.awards-step-btn');
+    if(!btn) return;
+
+    // 当前年份索引从全局变量读
+    var current = Math.round(window.__awardsCurrentC || 0);
+    var target = current + parseInt(btn.dataset.dir, 10);
+    if(target < 0) target = 0;
+    if(target > 2) target = 2;
+    if(target === current) return;
+
+    // 直接把页面滚到对应进度（stage 顶部相对文档的偏移 + 目标进度 * scrollable）
+    var stageTop = stage.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo({
+      top: stageTop + (target / 2) * scrollable,
+      behavior: 'smooth'
+    });
+  });
+
+  // 更新按钮禁用状态（首/末年份时禁用对应按钮）
+  function refreshButtons(){
+    var current = Math.round(window.__awardsCurrentC || 0);
+    var up = stepper.querySelector('[data-dir="-1"]');
+    var down = stepper.querySelector('[data-dir="1"]');
+    if(up) up.disabled = (current <= 0);
+    if(down) down.disabled = (current >= 2);
+  }
+  window.addEventListener('scroll', refreshButtons, {passive: true});
+  refreshButtons();
 })();
 </script>
 </body>
