@@ -979,22 +979,23 @@
     .campus-copy-title { font-size: clamp(18px, 5vw, 23px); margin-bottom: 8px; }
     .campus-copy-list { font-size: 13px; line-height: 1.62; }
     .campus-copy-list li { padding-left: 18px; margin-bottom: 3px; }
-    /* 图片流：横向一排，越过竖带左右边缘时用横向遮罩渐隐（照片「穿过」胶片带） */
+    /* 图片流：横向一排，中段整片清晰 —— 当前张卡在竖带正中，左右邻张各自从屏幕两侧探出来（水平圆环，圆心在屏幕内）。
+       只在贴近屏幕边缘那一小段淡出，看起来才是「绕过屏幕外的圆心转出去」而不是被竖带硬切掉。 */
     .campus-filmstrip {
       left: 0; right: 0; width: auto;
       top: var(--campus-center, 50%);
       transform: translateY(-50%);
       height: var(--film-h);
       -webkit-mask-image: linear-gradient(to right,
-          rgba(0,0,0,0) calc(50% - var(--film-w) / 2 - 12px),
-          #000 calc(50% - var(--frame-w) / 2),
-          #000 calc(50% + var(--frame-w) / 2),
-          rgba(0,0,0,0) calc(50% + var(--film-w) / 2 + 12px));
+          rgba(0,0,0,0) 0%,
+          #000 11%,
+          #000 89%,
+          rgba(0,0,0,0) 100%);
               mask-image: linear-gradient(to right,
-          rgba(0,0,0,0) calc(50% - var(--film-w) / 2 - 12px),
-          #000 calc(50% - var(--frame-w) / 2),
-          #000 calc(50% + var(--frame-w) / 2),
-          rgba(0,0,0,0) calc(50% + var(--film-w) / 2 + 12px));
+          rgba(0,0,0,0) 0%,
+          #000 11%,
+          #000 89%,
+          rgba(0,0,0,0) 100%);
     }
     /* inner 左边贴在屏幕中线上（正对的就是竖带中心），照片横向排开，靠 JS 的 translateX 逐张推过去 */
     .campus-filmstrip-inner {
