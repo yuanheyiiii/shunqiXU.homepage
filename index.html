@@ -752,8 +752,9 @@
   .campus-title-block .section-title { margin-bottom: 0; }
   .campus-stage {
     position: relative;
-    /* 精确高度由 JS 按视口重算（入场 70vh + 11×38vh + 停留 35vh + 1 屏），这里是兜底 */
-    height: 623vh;
+    /* 精确高度由 JS 按视口重算（1 屏上滑 + 11×38vh 逐张翻 + 停留 35vh），这里是兜底。
+       入场（照片飞进画格）已挪到「上滑那一屏」里，不再单独占高度。 */
+    height: 553vh;
   }
   .campus-sticky {
     position: sticky;
@@ -761,6 +762,24 @@
     height: 100vh;
     height: 100dvh;             /* 与 JS 的 innerHeight 对齐，避免 100vh 大于可视高度时构图整体下沉 */
     overflow: hidden;
+    /* 白底挂在这一层上：它才是被视差位移的那一层，白底因此与内容作为一个整体上滑，
+       进场时能压到上方获奖经历的黑白图之上（section 自己那层底色只作兜底） */
+    background-color: var(--paper-soft);
+  }
+
+  /* 白纸层：不受 .campus-sticky 的 overflow 裁剪，也不随 sticky 内容一起被限位。
+     它画在「上方获奖经历 sticky」之上、本区内容之下（DOM 晚于 #awards、早于 .campus-sticky）。
+     进场时它的上沿比 sticky 更快地往上冲，于是「白底压过黑白图」的那条边界线由它来当，
+     可以比页面本身更快（>1×），而不是被 sticky 的 0.74× 拖着走。 */
+  .campus-white {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    background: var(--paper-soft);
+    pointer-events: none;
   }
 
   /* ---------- 横版胶片（透明贯穿） ---------- */
@@ -1122,8 +1141,8 @@
     </div>
     <div class="hero-foot">
       <div class="scroll-hint">
-        <span class="bi-cn">向下滚动</span>
-        <span class="bi-en">Scroll</span>
+        <span class="bi-cn">探索</span>
+        <span class="bi-en">Explore</span>
         <span class="scroll-arrow" aria-hidden="true">↓</span>
       </div>
     </div>
@@ -1310,6 +1329,7 @@
 <!-- ===================== 5. 校园经历 ===================== -->
 <section id="campus" class="campus-section">
   <div class="campus-stage">
+    <div class="campus-white" aria-hidden="true"></div>
     <div class="campus-sticky">
 
       <div class="container campus-title-block">
@@ -3510,7 +3530,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
   if(!N) return;
 
   var CENTER=0.60;   /* 锁定构图中心（占屏高比例）：0.5=正中，越大越靠下（另有「不压标题」的下限自动兜底） */
-  var ENTRY=0.28;    /* 入场距离：照片流从屏幕下沿升到「第一张卡进画格」（越小照片来得越早） */
+  var ENTRY_LEAD=0.9;/* 入场提前量（占屏高比例，≤1）：区块顶边还在视口下方这么多时照片流就开始飞入，
+                        等区块完全钉住（固定）时第一张正好卡进画格；0 = 退回「钉住后才入场」的旧行为 */
   var STEP=0.38;     /* 之后每翻一张占多少滚动距离 */
   var HOLD=0.35;     /* 最后一张卡住后停留的距离，然后本节结束、页面解锁 */
   var reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -3520,7 +3541,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
   var TITLE_COPY_GAP=20; /* 手机端：标题底边 → 文案顶边 */
   var COPY_FILM_GAP=18;  /* 手机端：文案底边 → 胶片带顶边（构图下限） */
 
-  var M=null;                                   /* {V,fh,step,stepLen,scroll,entryEnd} */
+  var M=null;                                   /* {V,fh,step,stepLen,total,entryLead,rise,c} */
   var mode=null, stepIndex=null, activeStage=null, ticking=false;
 
   function measure(){
@@ -3540,7 +3561,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
     var filmEl=section.querySelector('.campus-film');
     var filmH=filmEl?(filmEl.offsetHeight||filmEl.getBoundingClientRect().height):340;
     var stepLen=V*STEP;
-    var scroll=V*ENTRY+stepLen*(N-1)+V*HOLD;
+    /* 入场（照片飞进画格）现在由「钉住之前的那一屏」驱动，不再占用钉住行程；
+       钉住期间只负责逐张翻 + 末张停留。 */
+    var entryLead=Math.min(V,V*ENTRY_LEAD);
+    var pinned=stepLen*(N-1)+V*HOLD;
     /* 大标题的视觉底边：用 offsetTop 链算，不受 reveal 动画 transform 影响 */
     var tb=section.querySelector('.campus-title-block');
     var h2=tb?tb.querySelector('.section-title'):null;
@@ -3587,7 +3611,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
     }
     var cMax=V-filmH/2-V*0.02;                   /* 胶片底边必须留在屏内 */
     if(c>cMax) c=cMax;
-    M={V:V,W:W,fw:fw,fh:fh,compact:compact,step:(compact?fw:fh)+gap,stepLen:stepLen,scroll:scroll,entryEnd:V*ENTRY,c:c,drumR:(compact?fw+gap:fh+gap)*DRUM_R_STEPS};
+    /* 入场行程 rise：起点放在「画格下方(电脑端)/屏幕右侧(手机端)」之外，终点就是画格中心。
+       入场过程中照片始终比画格低/靠后 rise，滚动一路把它送进画格 —— 落位即卡格。
+       注意：节距与起点都要用「上面按屏高改过尺寸之后」的最终 fw/fh/gap 来算。 */
+    var step=(compact?fw:fh)+gap;                 /* 相邻两帧的节距（圆柱每格的高度/宽度） */
+    var slot0=compact?(-fw/2):((c-V/2)-fh/2);
+    var entryAxis=compact?(W/2):(V/2);
+    M={V:V,W:W,fw:fw,fh:fh,compact:compact,step:step,stepLen:stepLen,
+       total:entryLead+pinned,entryLead:entryLead,rise:entryAxis-slot0,c:c,
+       drumR:(compact?fw+gap:fh+gap)*DRUM_R_STEPS};
     /* 标题必须整体落在顶部导航之下：实测导航高度写回 CSS 变量，切换窗口尺寸也保持 */
     var navEl=document.querySelector('nav');
     var navH=navEl?Math.round(navEl.getBoundingClientRect().height):0;
@@ -3604,8 +3636,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
     section.style.setProperty('--campus-film-fade',Math.round(fadeStart)+'px');
     /* 圆柱透视距离；灭点纵坐标由 applyDrum 跟着「正对画格的那张」实时写（见 applyDrum） */
     section.style.setProperty('--campus-persp',PERSP+'px');
-    /* sticky 期间正好消耗 scroll 这么多滚动：入场 + 逐张翻 + 末张停留 */
-    stage.style.height=(V+scroll)+'px';
+    /* sticky 期间正好消耗 pinned 这么多滚动：逐张翻 + 末张停留（入场已挪到钉住之前） */
+    stage.style.height=(V+pinned)+'px';
   }
 
   /* 电脑端：inner 顶边=视口中线，第 i 帧中心落在构图中心 c 上 → 额外平移 (c - 视口高/2)。
@@ -3618,7 +3650,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
   function slotX(i){ return -(i*M.step+M.fw/2); }
   /* 移动的轴由平台决定：电脑端是纵轴，手机端是横轴 */
   function slotOf(i){ return M.compact?slotX(i):slotY(i); }
-  function entryOf(){ return M.compact?liveW()/2:liveV()/2; }  /* 第 0 帧正好贴在屏幕右沿/下沿之外 */
   function axisT(v){ return (M.compact?'translateX(':'translateY(')+v.toFixed(2)+'px)'; }
 
   function setMode(next){
@@ -3680,14 +3711,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
 
   function render(){
     if(!M) measure();
-    var s=Math.max(0,Math.min(M.scroll,-stage.getBoundingClientRect().top));
+    /* raw：区块顶边越过视口顶边多少（钉住之前为负）。
+       entryLead 把入场整段挪到钉住之前：区块还在往上滑时照片就从屏幕下沿飞入，
+       等区块完全固定时第一张正好卡进画格，之后才开始逐张翻。 */
+    var raw=-stage.getBoundingClientRect().top;
+    var s=Math.max(0,Math.min(M.total,raw+M.entryLead));
 
-    if(s<M.entryEnd){
+    if(s<M.entryLead){
       /* 入场：连续上升，第一张最终正好卡进画格 */
       setMode('entry');
-      var t=M.entryEnd>0?s/M.entryEnd:1;
+      var t=M.entryLead>0?s/M.entryLead:1;
       var e=t*t*(3-2*t);                           /* smoothstep：起步和落位都收得住 */
-      var pos=entryOf()+(slotOf(0)-entryOf())*e;
+      var pos=slotOf(0)+(1-e)*M.rise;              /* 始终从画格下方/右侧 rise 处升起，落位即卡格 */
       inner.style.transform=axisT(pos);
       /* 入场时照片也是沿圆柱进来的：由实际位置反推「正对画格的是第几张」 */
       applyDrum(M.compact?((-pos-M.fw/2)/M.step):((M.c-liveV()/2-pos-M.fh/2)/M.step));
@@ -3698,7 +3733,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
 
     /* 逐张翻：每一张都正好停在画格那一格 */
     setMode('step');
-    var i=Math.floor((s-M.entryEnd)/M.stepLen);
+    var i=Math.floor((s-M.entryLead)/M.stepLen);
     i=i<0?0:(i>N-1?N-1:i);
     setStep(i);
   }
@@ -3732,6 +3767,75 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.79.0';
   window.addEventListener('load',function(){ lastW=window.innerWidth; lastH=window.innerHeight; layout(); });
   lastW=window.innerWidth; lastH=window.innerHeight;
   layout();
+})();
+</script>
+
+<script>
+/* 视差：只作用在 #campus（校园经历）这一块，做出它与上方 #awards（获奖经历）衔接处的速度差。
+   —— 教育经历、获奖经历都不加任何 transform，保持页面常速；
+      campus 整块滚得更快：进场提前一点冲上来、离场也提前走完。
+   两块内部都是 sticky 钉住（内容在钉住期静止、只推进各自动画），
+   所以「整块快慢」只能体现在进场与离场这两段，各恰好一屏行程。
+   偏移只写在 .campus-sticky 自己身上，且进场/离场两端（eIn=eOut=0）精确归零 ——
+   钉住区间内 transform 被清空，原有的标题/画格/卡格构图完全不受影响。
+
+   另有 .campus-white 白纸层：它不受 sticky 的 overflow 裁剪，进场时上沿按一条「越走越快」
+   的剖面额外多冲 PAR_SHEET 屏，因此「白底压过上方黑白图」的那条可见边界 = 白纸的上沿，
+   速度可以 >1×（不再被 sticky 的 0.74× 拖着走）。它在进场起点的前导量与 sticky 完全相等
+   （PAR_CAMPUS·H），所以边界线位置连续、不会跳；到了钉住区间它已整块跑出屏幕，不影响构图。 */
+(function(){
+  var PAR_CAMPUS=0.26;   /* campus 快：进场/离场各差 26% 速度（调大→更快，建议 0.26~0.40） */
+  var PAR_SHEET=0.30;    /* 白纸额外多冲的量（屏）：越大白底压过黑白图越快（建议 0.20~0.45） */
+
+  var stage=document.querySelector('#campus .campus-stage');
+  var sticky=document.querySelector('#campus .campus-sticky');
+  var sheet=document.querySelector('#campus .campus-white');
+  if(!stage||!sticky) return;
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;   /* 尊重系统「减弱动态效果」 */
+
+  var ticking=false;
+
+  function clamp01(v){ return v<0?0:(v>1?1:v); }
+
+  function update(){
+    ticking=false;
+    var H=window.innerHeight||1;
+    var r=stage.getBoundingClientRect();
+    /* 进场进度：区块顶边从视口下沿升到顶边（1→0）
+       离场进度：区块底边从视口下沿升到上沿（0→1）
+       两段各恰好一屏，两端都为 0 → 钉住区间偏移恒为 0
+       eIn 与 eOut 不会同时非零（进场段 eOut=0、离场段 eIn=0），
+       所以 eIn+eOut 就是"正在跨越边界"的那一段进度。 */
+    var eIn=clamp01(r.top/H);
+    var eOut=clamp01(1-r.bottom/H);
+    /* 全程取负 = 只向上多走：整块（白底 + 内容）比页面滚得快，
+       进场时白底顶边冲到版面缝之上、压在黑白图上；钉住区间仍精确归零。 */
+    var off=-PAR_CAMPUS*H*(eIn+eOut);
+    /* 亚像素残留（钉住两端 ±0.5px 内）直接归零：钉住区间不留 transform、不多出合成层 */
+    if(off>-0.5&&off<0.5) off=0;
+    sticky.style.transform=off?'translate3d(0,'+off.toFixed(2)+'px,0)':'';
+    if(!sheet) return;
+    /* 白纸：进场起点（u=0，即区块顶边刚到视口下沿）前导量 = sticky 的 PAR_CAMPUS·H，
+       与那条边重合、位置连续；随后按 smoothstep 再额外冲到 PAR_CAMPUS+PAR_SHEET 屏。
+       u=1（钉住）时它已跑到屏幕上方，整块离屏。 */
+    var u=1-clamp01(r.top/H);
+    var lead=PAR_CAMPUS*H+PAR_SHEET*H*(u*u*(3-2*u));
+    /* 只在它可能可见的行程里写 transform；两端（已整块离屏）清空，避免常驻合成层。
+       清空点都在「上沿 ≤ 视口底 / 下沿 ≤ 视口顶」之外，不会有跳变。 */
+    if(r.top>-H&&r.top<1.6*H) sheet.style.transform='translate3d(0,'+(-lead).toFixed(2)+'px,0)';
+    else sheet.style.transform='';
+  }
+
+  function schedule(){
+    if(ticking) return;
+    ticking=true;
+    window.requestAnimationFrame(update);
+  }
+
+  window.addEventListener('scroll',schedule,{passive:true});
+  window.addEventListener('resize',schedule);
+  window.addEventListener('load',schedule);
+  schedule();
 })();
 </script>
 </body>
